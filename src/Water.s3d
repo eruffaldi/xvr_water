@@ -1,0 +1,337 @@
+/**
+ * Reflection and Refraction Support Module
+ * required by Water.s3d
+ *
+ * Emanuele Ruffaldi 2010-2011 + 2017
+ * Scuola Superiore Sant'Anna
+ *
+ * Thanks to Rosario Leonardi
+ *
+ * Funded by EC within FP6 SKILLS
+ */
+#ifndef _Water_S3D_ 
+#define _Water_S3D_
+
+/**
+ * Module: Water
+ *
+ * Classes:
+ * - WaterHeightNoise
+ * - WaterHeight
+ * - Water
+ */
+
+/**
+ * Height map for moving the water surface
+ */
+class WaterHeightNoise
+{
+	var fbo,shader,obj,size;
+	var wakesTex;
+	var offset;
+	var noiseTex;
+	update();
+	draw(ssh);
+};
+
+/**
+ * Constructor
+ *
+ * \arg size of the FBO
+ * \arg noiseFile (e.g. dds/node.dds)
+ */
+function WaterHeightNoise::WaterHeightNoise(size,noiseFile)
+{
+	this.size = size;
+	fbo = CVmFBO(VR_FBO_COLOR,size, size, GL_RGB);
+	fbo.EnableMipmaps();	
+	noiseTex = CVmTexture(noiseFile);
+	shader = CVmShaderProgram("shader/waterheightnoise.sh");
+	shader.Start();
+ 	shader.SetParameter("NoiseTex", 0);
+	shader.Stop();
+ 	offset = 0.0;
+}
+
+/**
+ * Updates the height
+ */
+function WaterHeightNoise::update()
+{
+	fbo.Start();
+		SceneBegin(VR_LEAVE_COLOR|VR_LEAVE_GL_STATE);
+			shader.Start();
+				shader.SetParameter("time",0.005 * GetTime());
+				shader.SetParameter("offset", offset); 	
+				SetActiveTexture(noiseTex, VR_BILINEAR_FILTER, 0);
+				glBegin(GL_TRIANGLE_STRIP);
+					glTexCoord(0.0, 0.0); glVertex(-1.0, -1.0, 0);
+					glTexCoord(1.0, 0.0); glVertex(+1.0, -1.0, 0);
+					glTexCoord(0.0, 1.0); glVertex(-1.0, +1.0, 0);
+					glTexCoord(1.0, 1.0); glVertex(+1.0, +1.0, 0);
+				glEnd();
+			shader.Stop();
+		SceneEnd();
+	fbo.Stop();
+}
+
+/**
+ * Draws the height for diagnostics
+ */
+function WaterHeightNoise::draw(ssh)
+{
+	ssh.Start();
+		SetActiveTexture(fbo, VR_NO_FILTER, 0);
+		glBegin(GL_TRIANGLE_STRIP);
+			glTexCoord(0.0, 0.0); glVertex(-1.0, -1.0, 0);
+			glTexCoord(1.0, 0.0); glVertex(+1.0, -1.0, 0);
+			glTexCoord(0.0, 1.0); glVertex(-1.0, +1.0, 0);
+			glTexCoord(1.0, 1.0); glVertex(+1.0, +1.0, 0);
+		glEnd();	
+	ssh.Stop();
+}
+
+/*
+ * Water Height shader
+ */
+class WaterHeight
+{
+	var fbo,texture,shader,obj,size;
+	var wakesTex;
+	var noiseTex;
+	var wshader;
+	var offset;
+
+	var m_heightNoise;
+	var WakeFactor;
+	update();	
+	draw(ssh);
+};
+
+/**
+ * Constructor
+ *
+ * \arg size
+ * \arg sizeNoise
+ * \arg noiseFile
+ * \arg wakesFile
+ * \arg waterSize
+ * \arg waterSeg
+ */
+function WaterHeight::WaterHeight(size,sizeNoise,noiseFile,wakesFile,waterSize,waterSeg)
+{
+	WakeFactor = 1.0;
+	offset = 1.0;
+	m_heightNoise = WaterHeightNoise(sizeNoise,noiseFile);
+	//m_heightNoise = offset;
+	this.size = size;
+	fbo = CVmFBO(VR_FBO_COLOR,size,size, GL_RGBA);
+	fbo.EnableMipmaps();	
+	wakesTex = wakesFile != Void ? CVmTexture(wakesFile) :Void;
+	noiseTex = CVmTexture(noiseFile);
+	shader = CVmShaderProgram("shader/waterheight.sh");
+	shader.Start();
+		shader.SetParameter("NoiseTex",  0);
+		shader.SetParameter("InTexture", 1);
+		shader.SetParameter("WaveFactor",0.5);
+		shader.SetParameter("NoiseFactor",0.5);
+		shader.SetParameter("noiseRepeat",50.0);
+		
+	//	shader.SetParameter("WavePeriod",0.05);
+	shader.Stop();
+
+	if(wakesTex != Void)
+	{
+		wshader = CVmShaderProgram("shader/waterwake.sh");
+		wshader.Start();
+			wshader.SetParameter("Tex", 0);
+		wshader.Stop();
+	}
+	
+	// TODO m_heightNoise.offset 
+}
+
+/**
+ * Updates the motion of the water
+ */
+function WaterHeight::update()
+{
+	m_heightNoise.update();
+	fbo.Start();
+		SceneBegin(VR_LEAVE_COLOR|VR_LEAVE_GL_STATE);
+			shader.Start();
+				shader.SetParameter("time",GetTime());
+				shader.SetParameter("offset",offset);				
+				SetActiveTexture(noiseTex,VR_BILINEAR_FILTER, 0);
+				SetActiveTexture(m_heightNoise.fbo,VR_BILINEAR_FILTER, 1);
+				glBegin(GL_TRIANGLE_STRIP);
+					glTexCoord(0.0, 0.0); glVertex(-1.0, -1.0, 0);
+					glTexCoord(1.0, 0.0); glVertex(+1.0, -1.0, 0);
+					glTexCoord(0.0, 1.0); glVertex(-1.0, +1.0, 0);
+					glTexCoord(1.0, 1.0); glVertex(+1.0, +1.0, 0);
+				glEnd();	
+			shader.Stop();
+				if(wakesTex != Void)
+				{
+					glLoadIdentity();
+					glMatrixMode(GL_PROJECTION);
+					glLoadIdentity();
+					glMatrixMode(GL_MODELVIEW);
+					glEnable(GL_BLEND);
+						wshader.SetParameter("WakeFactor", WakeFactor);
+						wshader.Start();
+						SetActiveTexture(wakesTex,VR_BILINEAR_FILTER, 0);
+						
+						// Wake is World Coordinates => Water Local => Water Render -1 .. 1
+						// TODO: orient propertl
+						var CanoaCenter = [0,0,0]; //(CanoePos+wakeDelta)/waterSize;
+						var wakeSize = 0.1;
+						glTranslate(CanoaCenter);
+						glScale(wakeSize, wakeSize,1.0);
+						glBegin(GL_TRIANGLE_STRIP);
+							glTexCoord(1.0, 0.0); glVertex(-1.0, -1.0, 0);
+							glTexCoord(0.0, 0.0); glVertex(+1.0, -1.0, 0);
+							glTexCoord(1.0, 1.0); glVertex(-1.0, +1.0, 0);
+							glTexCoord(0.0, 1.0); glVertex(+1.0, +1.0, 0);
+						glEnd();	
+					wshader.Stop();
+					glDisable(GL_BLEND);
+				}
+		SceneEnd();
+	fbo.Stop();
+}
+
+/**
+ * Renders the Water with the provided shader
+ */
+function WaterHeight::draw(ssh)
+{
+	ssh.Start();
+	SetActiveTexture(fbo, VR_NO_FILTER, 0);
+	glBegin(GL_TRIANGLE_STRIP);
+		glTexCoord(0.0, 0.0); glVertex(-1.0, -1.0, 0);
+		glTexCoord(1.0, 0.0); glVertex(+1.0, -1.0, 0);
+		glTexCoord(0.0, 1.0); glVertex(-1.0, +1.0, 0);
+		glTexCoord(1.0, 1.0); glVertex(+1.0, +1.0, 0);
+	glEnd();	
+	ssh.Stop();
+}
+
+/**
+ * Usage in multipass systems:
+ * 
+ * Eye-Independent Pass:
+ * - updateHeight()
+ * - updateRefRec()
+ *
+ * View-Dependent Pass:
+ * - Draw()
+ *
+ */
+class Water
+{
+	var obj;
+	var waterSh;
+	var mat;
+	var skyTex;
+	
+	var m_reflection;
+	var m_refraction;
+	var m_height;
+	var m_waterSize;
+	var m_color;
+	var humbraColor;
+	
+	SetPosition(pos);
+	Draw();
+	updateRefRec();
+	updateHeight();
+};
+
+/**
+ * Constructor:
+ *
+ * \arg viewp (viewport)
+ * \arg size (size of the WaterHeight FBO)
+ * \arg noiseSize (size of the WaterNeightNoise FBO)
+ * \arg noiseFile (the noise file)
+ * \arg wakesFile (the wakes file)
+ * \arg waterSize (size in meters of the water XY)
+ * \arg waterSeg (number of segments in the plane object)
+ * \arg pReflection (a class that provides a function member render(useFog)) 
+ * \arg pRefraction (a class that provides a function member render(useFog)) 
+ */
+function Water::Water(viewp,size,noiseSize,noiseFile,wakesFile,waterSize,waterSeg,pReflection,pRefraction)
+{
+	m_color =[0,0,0,0];
+	m_reflection	= pReflection; 
+	m_refraction	= pRefraction; 
+	m_waterSize = waterSize;
+	m_height		= WaterHeight(size,noiseSize,noiseFile,wakesFile,waterSize,waterSeg);
+	humbraColor = [0.5,0.5,0.5,0.2];
+		
+	//creo mesh acqua e linko a oggetto
+	var sz = waterSize[2]/2.0;
+	var dim = waterSize[0];
+	var mWater = CVmNewMesh(VRP_PLANE, waterSeg, [-dim, 0, sz], [dim, 0, -sz], 1, false);
+
+	obj = CVmObj();
+	obj.LinkToMesh(mWater);
+
+	waterSh = CVmShaderProgram("shader/water.sh");
+	waterSh.Start();
+		waterSh.SetParameter("PixelDelta", 1.0/size);		
+		waterSh.SetParameter("fadeExp", 6.08);
+		waterSh.SetParameter("fadeBias", 0.3);
+		waterSh.SetParameter("sz", sz);
+		waterSh.SetParameter("heightTex",0);
+		waterSh.SetParameter("refrTex",1);
+		waterSh.SetParameter("humbraColor",humbraColor);
+
+		waterSh.SetParameter("reflTex",2);
+		waterSh.SetParameter("waterColor", m_color);
+	waterSh.Stop();
+}
+
+/**
+ * Updates the water height 
+ */
+function Water::UpdateHeight()
+{
+	m_height.update();
+}
+
+/**
+ * Updates the water reflection and refraction
+ */
+function Water::UpdateRefRec()
+{
+	m_reflection.Update();
+	m_refraction.Update();
+}
+
+/**
+ * Renders water
+ */
+function Water::Draw()
+{
+	waterSh.Start();
+		watersh.SetParameter("waterColor", m_color);
+		SetActiveTexture(m_height.fbo,		VR_BILINEAR_FILTER, 0);	
+		SetActiveTexture(m_refraction.fbo,	VR_BILINEAR_FILTER, 1);	
+		SetActiveTexture(m_reflection.fbo,	VR_NO_FILTER, 2);	
+		obj.Draw();
+		glActiveTextureARB(2);
+		glDisable(GL_TEXTURE_2D);
+	waterSh.Stop();
+}
+
+/**
+ * Moves the water around
+ */
+function Water::SetPosition(p)
+{
+	obj.SetPosition(p);
+}
+
+#endif // _Water_S3D_ 

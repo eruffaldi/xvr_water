@@ -1,0 +1,177 @@
+/**
+ * Reflection and Refraction Support Module
+ * required by Water.s3d
+ *
+ * Emanuele Ruffaldi 2010-2011 + 2017
+ * Scuola Superiore Sant'Anna
+ *
+ * Thanks to Rosario Leonardi
+ *
+ * Funded by EC within FP6 SKILLS
+ */
+#ifndef _ReflecRifrac_S3D_
+#define _ReflecRifrac_S3D_
+
+/**
+ * Module: ReflectRifrac
+ *
+ * Classes:
+ * - ReflectionPart
+ * - RefractionPart
+ */
+
+
+/**
+ * Common Class for providing reflection functionalities
+ *
+ * ABSTRACT class, implement render(usefog)
+ *
+ * Requirements: g_glLib.glFrontFace
+ */
+class ReflectionPart 
+{
+  var fbo;
+  update();
+  draw(ssh);
+  render(usefog);
+};
+
+/**
+ * Common Class for providing refraction functionalities
+ *
+ * ABSTRACT class, implement render(usefog)
+ *
+ * Requirements: g_glLib.glFrontFace
+ */
+class RefractionPart {
+  var fbo;
+  var targets;
+  update();
+  draw(ssh);
+  render(phase);
+};
+
+
+/**
+ * Constructor that receives the 
+ \arg viewp viewport (x,y,w,h)
+ */
+function ReflectionPart::ReflectionPart(viewp) 
+{
+  fbo = CVmFbo(VR_FBO_COLOR_Z, viewp[2], viewp[3], GL_RGB, GL_UNSIGNED_BYTE, GL_RGB);
+}
+
+/**
+ * Draws the Reflection in the context of the provided shader
+ \arg ssh the shader
+ */
+function ReflectionPart::draw(ssh) 
+{
+  ssh.Start();
+  SetActiveTexture(fbo, VR_NO_FILTER, 0);
+  glBegin(GL_TRIANGLE_STRIP);
+  glTexCoord(0.0, 0.0);
+  glVertex(-1.0, -1.0, 0);
+  glTexCoord(1.0, 0.0);
+  glVertex(+1.0, -1.0, 0);
+  glTexCoord(0.0, 1.0);
+  glVertex(-1.0, +1.0, 0);
+  glTexCoord(1.0, 1.0);
+  glVertex(+1.0, +1.0, 0);
+
+  glEnd();
+  ssh.Stop();
+}
+
+/**
+ * User provided
+ */
+function ReflectionPart::render(enableFog) 
+{
+	
+}
+
+/**
+ * Updates the FBO invoking the rendering
+ *
+ * TODO: replace the clip plane
+ */
+function ReflectionPart::update() 
+{
+  fbo.Start();
+  // SceneBegin(VR_LEAVE_GL_STATE); // VR_LEAVE_COLOR|
+  StereoSceneBeginPre(void, VR_LEAVE_GL_STATE);
+  // SceneBegin(VR_LEAVE_COLOR);
+  glPushMatrix();
+  glScale(1.0, -1.0, 1.0);
+  g_glLib.glFrontFace(GL_CW);
+  var plane = [ 0.0, 1.0, 0.0, 0.0 ];  // water at y=0, mas o menos
+  glEnable(GL_CLIP_PLANE0);
+  glClipPlane(GL_CLIP_PLANE0, plane);
+  Render(true);
+  glDisable(GL_CLIP_PLANE0);
+  // Render(false);
+  g_glLib.glFrontFace(GL_CCW);
+  glPopMatrix();
+  SceneEnd();
+  fbo.Stop();
+}
+
+/**
+ * Constructor that receives the 
+ \arg viewp viewport (x,y,w,h)
+ */
+function RefractionPart::RefractionPart(viewp) 
+{
+  fbo = CVmFbo(VR_FBO_COLOR_Z, viewp[2] * 0.5, viewp[3] * 0.5, GL_RGB);
+}
+
+/**
+ * Updates the FBO invoking the rendering
+ *
+ * TODO: replace the clip plane
+ */
+function RefractionPart::update() 
+{
+  fbo.Start();
+  StereoSceneBeginPre(void, VR_LEAVE_GL_STATE);  //|VR_LEAVE_COLOR);
+  // SceneBegin(VR_LEAVE_GL_STATE);
+  // viene fatto un taglio piu' alto dell'acqua in modo da evitare artefatti
+  var plane = [ 0.0, -1.0, 0.0, 0.00 ];  // water at y=0, mas o menos
+  glEnable(GL_CLIP_PLANE0);
+  glClipPlane(GL_CLIP_PLANE0, plane);
+  render();
+  glDisable(GL_CLIP_PLANE0);
+  SceneEnd();
+  fbo.Stop();
+}
+
+/**
+ * User provided
+ */
+function RefractionPart::render(phase) 
+{
+	
+}
+
+/**
+ * Draws the Refraction in the context of the provided shader
+ \arg ssh the shader
+ */
+function RefractionPart::draw(ssh) 
+{
+  ssh.Start();
+  SetActiveTexture(fbo, VR_NO_FILTER, 0);
+  glBegin(GL_TRIANGLE_STRIP);
+  glTexCoord(0.0, 0.0);
+  glVertex(-1.0, -1.0, 0);
+  glTexCoord(1.0, 0.0);
+  glVertex(+1.0, -1.0, 0);
+  glTexCoord(0.0, 1.0);
+  glVertex(-1.0, +1.0, 0);
+  glTexCoord(1.0, 1.0);
+  glVertex(+1.0, +1.0, 0);
+  glEnd();
+  ssh.Stop();
+}
+#endif  // _ReflecRifrac_S3D_

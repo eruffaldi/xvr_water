@@ -1,0 +1,93 @@
+/**
+ * Reflection and Refraction Support Module
+ * required by Water.s3d
+ *
+ * Emanuele Ruffaldi 2010-2011 + 2017
+ * Scuola Superiore Sant'Anna
+ *
+ * Thanks to Rosario Leonardi
+ *
+ * Funded by EC within FP6 SKILLS
+ */
+
+/*
+ First we define the classes that expose the required render methods
+
+ This code has been extracted from main code so it requires some updates
+
+ */
+
+
+class MyReflection: ReflectionPart
+{
+	render(x);
+};
+
+class MyRefraction: RefractionPart
+{
+	render(enableFog);
+};
+
+function MyReflection::render(enableFog)
+{
+	if(reflenabled)
+		myRender([0.66, 0.77, 0.95],true); 
+}
+
+function MyRefraction::render(enableFog)
+{
+	if(refrenabled)
+		myRender([0.22, 0.32, 0.44],true);
+}
+
+class NoRefraction: RefractionPart
+{
+	render(enableFog);
+};
+
+function NoRefraction::render(enableFog)
+{
+}
+
+class NoReflection: ReflectionPart
+{
+	render(enableFog);
+};
+
+function NoReflection::render(enableFog)
+{
+}
+
+function OnInitWater(params)
+{		
+	SetLocalDir("\\water_data");	
+
+	g_glLib = CVmExternDll("opengl32.dll");
+	g_glLib.__AddFunction(C_VOID,"glFrontFace",C_INT);
+	
+	CameraSetPosition(CamPos);
+	CameraSetDirection(CamDir);
+
+	glFog(GL_FOG_MODE, GL_LINEAR);
+	glFog(GL_FOG_COLOR, [0.0, 0.0, 1.0]);
+	glFog(GL_FOG_END, 10.0);
+
+	g_viewp = glGet(GL_VIEWPORT);
+	g_viewportNeedUpdate = false;
+	
+	var noiseFile = "dds/noise.dds";
+	var wakesFile	 = "dds/wakes2.dds";
+
+	// viewport, texturesize, noise size, noise file, wakes file (opt), watersize (meters), segments of water	
+
+	aWater  = Water(g_viewp,1024,512,noiseFile,wakesFile,waterZExtension,128, MyReflection(g_viewp),MyRefraction(g_viewp));
+	aWater.m_color  = [0.298,0.341,0.305,0.2];
+	
+}
+
+function WaterUpdate()
+{
+	glPushAttrib(GL_TEXTURE_BIT | GL_ENABLE_BIT);
+		aWater.updateHeight();
+	glPopAttrib();
+}
